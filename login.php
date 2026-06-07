@@ -3,6 +3,12 @@ ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
 session_start();
+if (!isset($_SESSION['login_attempts'])) {
+    $_SESSION['login_attempts'] = 0;
+}
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 require_once __DIR__ . '/config/database.php';
 
 // Déjà connecté au  dashboard
@@ -14,23 +20,40 @@ if (isset($_SESSION['admin_id'])) {
 $erreur = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        die("Requête invalide");
+    }
+
     $email = trim($_POST['email'] ?? '');
-    $mdp   = trim($_POST['mot_de_passe'] ?? '');
+    $mdp   = $_POST['mot_de_passe'] ?? '';
 
     if (empty($email) || empty($mdp)) {
         $erreur = 'Veuillez remplir tous les champs.';
     } else {
+
         $stmt = $pdo->prepare("SELECT * FROM utilisateurs WHERE email = ? LIMIT 1");
         $stmt->execute([$email]);
         $user = $stmt->fetch();
 
         if ($user && password_verify($mdp, $user['mot_de_passe'])) {
+
+            $_SESSION['login_attempts'] = 0;
+
             $_SESSION['admin_id']  = $user['id'];
             $_SESSION['admin_nom'] = $user['nom'];
+
             header('Location: admin/dashboard.php');
             exit;
+
         } else {
+
             $erreur = 'Email ou mot de passe incorrect.';
+            $_SESSION['login_attempts']++;
+
+            if ($_SESSION['login_attempts'] >= 5) {
+                $erreur = "Compte temporairement bloqué. Réessayez plus tard.";
+            }
         }
     }
 }
@@ -78,7 +101,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <!-- Formulaire -->
     <form method="POST" action="login.php">
-
+    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+        
       <div class="mb-3">
         <label class="form-label" style="font-size:.83rem; font-weight:500;">
           Adresse email

@@ -75,3 +75,7 @@ function construireCalendrier() {
 }
 
 construireCalendrier();
+
+window.addEventListener('load', () => {
+  document.querySelector('input[name="email"]')?.focus();
+});
